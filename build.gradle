@@ -1,0 +1,46 @@
+plugins {
+    id 'java'
+}
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // PostgreSQL JDBC driver
+    implementation 'org.postgresql:postgresql:42.7.3'
+
+    // JUnit (optional, safe to keep)
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+/* ---------- ENABLE PREVIEW FEATURES ---------- */
+
+// enable preview at compile time
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += '--enable-preview'
+}
+
+// enable preview at runtime
+tasks.withType(JavaExec).configureEach {
+    jvmArgs += '--enable-preview'
+}
+
+// enable preview for tests (optional but correct)
+tasks.withType(Test).configureEach {
+    jvmArgs += '--enable-preview'
+}
+
+test {
+    useJUnitPlatform()
+}
