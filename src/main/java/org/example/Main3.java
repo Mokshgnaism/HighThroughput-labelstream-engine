@@ -1,6 +1,10 @@
 package org.example;
 import LabelClasses.*;
 import HmacGenerator.*;
+import org.postgresql.copy.CopyManager;
+import org.postgresql.core.BaseConnection;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 
 import java.nio.file.attribute.UserPrincipal;
 import java.util.ArrayList;
@@ -50,35 +54,35 @@ public class Main3 {
         }
 //        ========================================SECOND SECTION ENDED ====================================
 //        =======================================DB CONNECTION AND INSERTING PALETS =======================
-         final String url = "jdbc:postgresql://localhost:5432/testdb";
-         final String user = "postgres";
-         final String password = "Mokshgna@123";
-         try(var conn = DriverManager.getConnection(url,user,password)){
-             conn.setAutoCommit(false);
-             final String sql_string = "INSERT INTO pallets(ssic,employee_id,factory_id,hash,hash_prefix) VALUES ((?),(?),(?),(?),(?)) on CONFLICT DO NOTHING;";
-             try(PreparedStatement ps = conn.prepareStatement(sql_string)){
-                 for (var palet : palets) {
-                     ps.setString(1,palet.PaletSSIC);
-                     ps.setString(2,palet.employeeId);
-                     ps.setString(3,palet.FactoryId);
-                     ps.setString(4,palet.hash);
-                     ps.setString(5,palet.hashPrefix);
-                     ps.addBatch();
-                 }
-                 ps.executeBatch();
-                 conn.commit();
-             }
-             catch (Exception e){
-                 conn.rollback();
-             }
-         }catch (Exception e){
-             e.printStackTrace();
+        final String url = "jdbc:postgresql://localhost:5432/testdb";
+        final String user = "postgres";
+        final String password = "Mokshgna@123";
+        try(var conn = DriverManager.getConnection(url,user,password)){
+            conn.setAutoCommit(false);
+            final String sql_string = "INSERT INTO pallets(ssic,employee_id,factory_id,hash,hash_prefix) VALUES ((?),(?),(?),(?),(?)) on CONFLICT DO NOTHING;";
+            try(PreparedStatement ps = conn.prepareStatement(sql_string)){
+                for (var palet : palets) {
+                    ps.setString(1,palet.PaletSSIC);
+                    ps.setString(2,palet.employeeId);
+                    ps.setString(3,palet.FactoryId);
+                    ps.setString(4,palet.hash);
+                    ps.setString(5,palet.hashPrefix);
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+                conn.commit();
+            }
+            catch (Exception e){
+                conn.rollback();
+            }
+        }catch (Exception e){
+            e.printStackTrace();
 
-         }
+        }
 //         ============================== generating 10k + 50k + inserting 10k took around 1800 ms ==========================================
 //        ============================== LETS TRY TO insert the cartons ... with multiple threads running on it . ======================
         workers = 4;
-         chunk = (totalCartons.size() + workers - 1) / workers;
+        chunk = (totalCartons.size() + workers - 1) / workers;
         try (var scope = new StructuredTaskScope.ShutdownOnFailure()){
             for(int i = 0; i < workers; i++){
                 final int finalI = i;
@@ -131,36 +135,39 @@ public class Main3 {
                 scope.fork(()->{
                     try(var conn = DriverManager.getConnection(url,user,password)){
                         conn.setAutoCommit(false);
-                        String sql_string = "INSERT INTO units(serial_id,parent_carton_id,hash,hash_prefix) VALUES ((?),(?),(?),(?)) ON CONFLICT DO NOTHING;";
-                        try(PreparedStatement ps = conn.prepareStatement(sql_string)){
-                            int batch = 0;
-                            while(true){
-                                Unit u = queue.take();
-                                if(u==poison){
-                                    break;
-                                }
-                                ps.setString(1,u.serialId);
-                                ps.setString(2,u.parentCartonID);
-                                ps.setString(3,u.Hash);
-                                ps.setString(4,u.prefix);
-                                ps.addBatch();
-                                if(++batch==10000){
-                                    ps.executeBatch();
-                                    conn.commit();
-                                    ps.clearBatch();
-                                    batch = 0;
-                                }
+                        CopyManager copyManager = new CopyManager((BaseConnection)conn);
+                        int batch = 0;
+                        StringBuilder buffer = new StringBuilder();
+                        while(true){
+                            Unit u =  queue.take();
+                            if(u==poison){
+                                break;
                             }
-                            if(batch>0){
-                                ps.executeBatch();
+                            buffer.append(u.serialId).append(",")
+                                    .append(u.parentCartonID).append(",")
+                                    .append(u.Hash).append(",")
+                                    .append(u.prefix).append("\n");
+                            if(++batch==50000){
+                                ByteArrayInputStream input = new ByteArrayInputStream(buffer.toString().getBytes(StandardCharsets.UTF_8));
+                                copyManager.copyIn(
+                                        "COPY units(serial_id,parent_carton_id,hash,hash_prefix) FROM STDIN WITH CSV",
+                                        input);
                                 conn.commit();
-                                ps.clearBatch();
+                                buffer.setLength(0);
+                                batch = 0;
                             }
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
+                        }
+                        if(batch>0){
+                            ByteArrayInputStream input = new ByteArrayInputStream(buffer.toString().getBytes(StandardCharsets.UTF_8));
+                            copyManager.copyIn(
+                                    "COPY units(serial_id,parent_carton_id,hash,hash_prefix) FROM STDIN WITH CSV",
+                                    input);
+                            conn.commit();
+                            buffer.setLength(0);
+                            batch = 0;
                         }
                     }
-                    return  null;
+                   return  null;
                 });
             }
             try(var scope2 = new StructuredTaskScope.ShutdownOnFailure()){
