@@ -181,6 +181,7 @@ public class Main3 {
                             copyManager.copyIn(
                                     "COPY units(serial_id,parent_carton_id,hash,hash_prefix) FROM STDIN WITH CSV",
                                     input);
+//                            "COPY units(serial_id,parent_carton_id,hash,hash_prefix) FROM STDIN WITH CSV"
                             conn.commit();
                             buffer.setLength(0);
                             batch = 0;
@@ -360,7 +361,7 @@ public class Main3 {
                            try(var conn = DriverManager.getConnection(url,user,password)){
                                conn.setAutoCommit(false);
                                CopyManager copyManager = new CopyManager((BaseConnection)conn);
-                               copyManager.copyIn("COPY units(serial_id,parent_pallet_id,hash,hash_prefix) FROM STDIN WITH CSV ",input);
+                               copyManager.copyIn("COPY units(serial_id,parent_carton_id,hash,hash_prefix) FROM STDIN WITH CSV",input);
                            } catch (Exception e) {
                                e.printStackTrace();
                            }
@@ -372,12 +373,13 @@ public class Main3 {
                             u = LabelGenerator2.generateUnitsForCarton(c.serialId,unitsPerCarton);
 //                            String hash, String prefix, String parentCartonID, String serialId
                             for(Unit u2 : u){
-                                writer.write(u2.Hash+",");
-                                writer.write(u2.prefix+",");
+                                writer.write(u2.serialId+",");
                                 writer.write(u2.parentCartonID+",");
-                                writer.write(u2.serialId+"\n");
+                                writer.write(u2.Hash+",");
+                                writer.write(u2.prefix+"\n");
                             }
                         }
+                        output.close();
                         return null;
                     }));
                 }
