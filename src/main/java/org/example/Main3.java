@@ -3,7 +3,8 @@ import LabelClasses.*;
 import HmacGenerator.*;
 import org.postgresql.copy.CopyManager;
 import org.postgresql.core.BaseConnection;
-import java.io.ByteArrayInputStream;
+
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 import java.nio.file.attribute.UserPrincipal;
@@ -340,50 +341,10 @@ public class Main3 {
 
         workers = 4;
         chunk = (totalCartons.size() + workers - 1) / workers;
-        Unit poison = new Unit("POISON","POISON","POISON","POISON");
+
 
         BlockingQueue<Unit> queue = new ArrayBlockingQueue<>(200_000);
         try(var scope = new StructuredTaskScope.ShutdownOnFailure()){
-            final int dbWorkers = 3;
-            for(int i = 0; i < dbWorkers; i++){
-                scope.fork(()->{
-                    try(var conn = DriverManager.getConnection(url,user,password)){
-                        conn.setAutoCommit(false);
-                        CopyManager copyManager = new CopyManager((BaseConnection)conn);
-                        int batch = 0;
-                        StringBuilder buffer = new StringBuilder();
-                        while(true){
-                            Unit u =  queue.take();
-                            if(u==poison){
-                                break;
-                            }
-                            buffer.append(u.serialId).append(",")
-                                    .append(u.parentCartonID).append(",")
-                                    .append(u.Hash).append(",")
-                                    .append(u.prefix).append("\n");
-                            if(++batch==batchSize){
-                                ByteArrayInputStream input = new ByteArrayInputStream(buffer.toString().getBytes(StandardCharsets.UTF_8));
-                                copyManager.copyIn(
-                                        "COPY units(serial_id,parent_carton_id,hash,hash_prefix) FROM STDIN WITH CSV",
-                                        input);
-                                conn.commit();
-                                buffer.setLength(0);
-                                batch = 0;
-                            }
-                        }
-                        if(batch>0){
-                            ByteArrayInputStream input = new ByteArrayInputStream(buffer.toString().getBytes(StandardCharsets.UTF_8));
-                            copyManager.copyIn(
-                                    "COPY units(serial_id,parent_carton_id,hash,hash_prefix) FROM STDIN WITH CSV",
-                                    input);
-                            conn.commit();
-                            buffer.setLength(0);
-                            batch = 0;
-                        }
-                    }
-                    return  null;
-                });
-            }
             try(var scope2 = new StructuredTaskScope.ShutdownOnFailure()){
                 List<StructuredTaskScope.Subtask<Void>>Producers = new ArrayList<>();
                 for(int i = 0; i < workers; i++){
@@ -392,21 +353,35 @@ public class Main3 {
                     final int startIdx = finalI * chunkFinal;
                     final int endIdx = Math.min(startIdx + chunkFinal, totalCartons.size());
                     Producers.add(scope2.fork(()->{
+                        PipedOutputStream output = new PipedOutputStream();
+                        PipedInputStream input = new PipedInputStream(output);
+                        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8));
+                        scope2.fork(()->{
+                           try(var conn = DriverManager.getConnection(url,user,password)){
+                               conn.setAutoCommit(false);
+                               CopyManager copyManager = new CopyManager((BaseConnection)conn);
+                               copyManager.copyIn("COPY units(serial_id,parent_pallet_id,hash,hash_prefix) FROM STDIN WITH CSV ",input);
+                           } catch (Exception e) {
+                               e.printStackTrace();
+                           }
+                           return  null;
+                        });
                         for(int j = startIdx; j < endIdx; j++){
                             List<Unit> u;
                             Carton c = totalCartons.get(j);
                             u = LabelGenerator2.generateUnitsForCarton(c.serialId,unitsPerCarton);
+//                            String hash, String prefix, String parentCartonID, String serialId
                             for(Unit u2 : u){
-                                queue.put(u2);
+                                writer.write(u2.Hash+",");
+                                writer.write(u2.prefix+",");
+                                writer.write(u2.parentCartonID+",");
+                                writer.write(u2.serialId+"\n");
                             }
                         }
                         return null;
                     }));
                 }
                 scope2.join();
-                for(int i=0;i<dbWorkers;i++){
-                    queue.put(poison);
-                }
             }catch (Exception e){
                 e.printStackTrace();
             }
