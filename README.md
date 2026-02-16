@@ -4,11 +4,15 @@
 
 This project implements a high-performance hierarchical label generation and ingestion pipeline using Java structured concurrency and PostgreSQL bulk loading.
 
+
 The system generates and processes a hierarchical logistics structure:
 
 - Pallets
 - Cartons (children of pallets)
 - Units (children of cartons)
+
+## NOTE : 
+- enter through Main3 in org.example
 
 Key goals:
 
