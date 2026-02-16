@@ -141,3 +141,44 @@ CREATE TABLE units (
     FOREIGN KEY (parent_carton_id) REFERENCES cartons(serial_id)
 );
 ```
+## Benchmark
+
+### Test Scenario
+
+Hierarchical label generation and ingestion benchmark:
+
+- Total labels processed: **5.51 million**
+
+#### Structure
+
+- Pallets → Cartons → Units
+
+#### Configuration
+
+- Hash generation enabled for all labels
+- Multi-threaded generation using structured concurrency
+- Bulk ingestion using PostgreSQL COPY API
+- Producer-consumer pipeline for unit processing
+
+---
+
+### Result
+
+- Total time: **under 32 seconds**
+
+Includes:
+
+- Label generation
+- Hash computation
+- Bulk database insertion
+
+---
+
+### Key Performance Factors
+
+- COPY-based ingestion instead of row-by-row inserts
+- Parallel workload partitioning
+- Structured concurrency reducing thread management overhead
+- Producer-consumer pipeline decoupling CPU and IO workloads
+- Large batch sizes minimizing transaction overhead
+
