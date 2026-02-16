@@ -2,7 +2,9 @@ package HmacGenerator;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-
+// this was the first try to generate without prod - cons and it took around 1.45 seconds the bottle neck was hashing
+//the storing of 4d arrays might look unconvincing but it scaled well upto nearly 500k labels easily under 20 seconds without prod-cons
+//=================================LEGACY ============================================
 public class LabelGenerator {
     public static String[] generateLabel(String companyPrefix,Integer noOfpalets,String operatorId){
         // first generate the ssic labels for the companyPrefix and store them in an array
